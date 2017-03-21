@@ -34,11 +34,17 @@ public class CassandraRing extends Agent {
 
 	@Override
 	public void pollCycle() {
-		LOGGER.debug("starting poll cycle");
-		List<Metric> allMetrics = new ArrayList<Metric>();
+               LOGGER.debug("starting poll cycle");
+               List<Metric> allMetrics = new ArrayList<Metric>();
 		try {
-			LOGGER.debug("getting ring hosts from discovery_host " + config.getString("discovery_host"));
-			List<String> ringHosts = CassandraHelper.getRingHosts(config.getString("discovery_host"), config.getString("jmx_port"));
+		        String discoHost = config.getString("discovery_host");
+                        LOGGER.debug("getting ring hosts from discovery_host " + discoHost);
+			List<String> ringHosts = CassandraHelper.getRingHosts(discoHost, config.getString("jmx_port"));
+			// TODO: figure out why C* returns an empty list after a few minutes
+			if (ringHosts.size() < 1) {
+			    ringHosts.add(discoHost);
+			    LOGGER.warn("cassandra JMX returned an empty list of nodes.  using discovery host as a fallback");
+			}
 
 			LOGGER.debug("getting metrics for hosts [" + ringHosts + "]...");
 
@@ -56,16 +62,12 @@ public class CassandraRing extends Agent {
 							ArrayList<Metric> metrics = new ArrayList<Metric>();
 
 							// Latency
-							Double rl = JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest",
-									"Read", "Mean");
-							TimeUnit rlUnit = JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest",
-									"Read", "LatencyUnit");
+							Double rl = JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest", "Read", "Mean");
+							TimeUnit rlUnit = TimeUnit.valueOf(((String)JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest", "Read", "DurationUnit")).toUpperCase());
 							rl = toMillis(rl, rlUnit);
 
-							Double wl = JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest",
-									"Write", "Mean");
-							TimeUnit wlUnit = JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest",
-									"Write", "LatencyUnit");
+							Double wl = JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest", "Write", "Mean");
+							TimeUnit wlUnit = TimeUnit.valueOf(((String)JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest", "Write", "DurationUnit")).toUpperCase());
 							wl = toMillis(wl, wlUnit);
 
 							metrics.add(new Metric("Cassandra/hosts/" + host + "/Latency/Reads", "millis", rl));
@@ -76,21 +78,29 @@ public class CassandraRing extends Agent {
 							// System
 							Integer cpt = JMXHelper.queryAndGetAttribute(connection,
 									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=Compaction", "name=PendingTasks"), "Value");
-							Long mpt = JMXHelper.queryAndGetAttribute(connection, JMXHelper.getObjectNameByKeys("org.apache.cassandra.internal",
-									"type=MemtablePostFlush"), "PendingTasks");
+							Long mpt = JMXHelper.queryAndGetAttribute(connection,
+												  JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics",
+																"type=ThreadPools",
+																"path=internal",
+																"scope=MemtablePostFlush",
+																"name=PendingTasks"), "Value");
 
 							metrics.add(new Metric("Cassandra/hosts/" + host + "/Compaction/PendingTasks", "count", cpt));
 							metrics.add(new Metric("Cassandra/hosts/" + host + "/MemtableFlush/PendingTasks", "count", mpt));
 
 							// Storage
-							Double load = JMXHelper.queryAndGetAttribute(connection,
-									JMXHelper.getObjectNameByKeys("org.apache.cassandra.db", "type=StorageService"), "Load");
-							metrics.add(new Metric("Cassandra/host/" + host + "/Storage/Data", "bytes", load));
+							Long load = JMXHelper.queryAndGetAttribute(connection,
+												     JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics",
+																   "type=Storage",
+																   "name=Load"), "Count");
+							metrics.add(new Metric("Cassandra/hosts/" + host + "/Storage/Data", "bytes", load));
 							metrics.add(new Metric("Cassandra/global/Storage/Data", "bytes", load));
 
 							Long commitLog = JMXHelper.queryAndGetAttribute(connection,
-									JMXHelper.getObjectNameByKeys("org.apache.cassandra.db", "type=Commitlog"), "TotalCommitlogSize");
-							metrics.add(new Metric("Cassandra/host/" + host + "/Storage/CommitLog", "bytes", commitLog));
+													JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics",
+																      "type=CommitLog",
+																      "name=TotalCommitLogSize"), "Value");
+							metrics.add(new Metric("Cassandra/hosts/" + host + "/Storage/CommitLog", "bytes", commitLog));
 							metrics.add(new Metric("Cassandra/global/Storage/CommitLog", "bytes", commitLog));
 
 							// Cache
@@ -177,10 +187,12 @@ public class CassandraRing extends Agent {
 			for (Metric m : allMetrics) {
 				if (m.value != null && !m.value.toString().equals("NaN"))
 					reportMetric(m.name, m.valueType, m.value);
-				else
-					dropped++;
+				else {
+				    LOGGER.debug("dropping null/NaN metric: " + m.name);
+				    dropped++;
+				}
 			}
-			LOGGER.debug("pushing metrics: done! dropped metrics: " + dropped);
+			LOGGER.debug("pushing metrics: done! dropped (null/NaN) metrics: " + dropped);
 		}
 	}
 }
