@@ -9,7 +9,10 @@ import javax.management.MBeanServerConnection;
 import ar.com.threelegs.newrelic.jmx.JMXHelper;
 import ar.com.threelegs.newrelic.jmx.JMXTemplate;
 
+import com.newrelic.metrics.publish.util.Logger;
+
 public class CassandraHelper {
+	private static final Logger LOGGER = Logger.getLogger(CassandraHelper.class);
 
 	@SuppressWarnings("rawtypes")
 	public static List<String> getRingHosts(String discoveryHost, String jmxPort, String user, String pass) throws Exception {
@@ -17,19 +20,8 @@ public class CassandraHelper {
 		return JMXHelper.run(discoveryHost, jmxPort, user, pass, new JMXTemplate<List<String>>() {
 			@Override
 			public List<String> execute(MBeanServerConnection connection) throws Exception {
-				List<String> ret = new ArrayList<String>();
+				return JMXHelper.queryAndGetAttribute(connection, JMXHelper.getObjectNameByKeys("org.apache.cassandra.db", "type=StorageService"), "LiveNodes");
 
-				Map m = JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.db", null, "DynamicEndpointSnitch", null, "Scores");
-
-				if (m != null) {
-					for (Object key : m.keySet()) {
-                        String val = key.toString();
-
-                        ret.add(val.substring(val.indexOf("/")+1, val.length()));
-					}
-				}
-
-				return ret;
 			}
 		});
 
