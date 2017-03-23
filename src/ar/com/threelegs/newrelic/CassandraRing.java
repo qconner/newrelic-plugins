@@ -39,7 +39,7 @@ public class CassandraRing extends Agent {
 		try {
 		        String discoHost = config.getString("discovery_host");
                         LOGGER.debug("getting ring hosts from discovery_host " + discoHost);
-			List<String> ringHosts = CassandraHelper.getRingHosts(discoHost, config.getString("jmx_port"));
+			List<String> ringHosts = CassandraHelper.getRingHosts(discoHost, config.getString("jmx_port"), config.getString("username"), config.getString("password"));
 			// TODO: figure out why C* returns an empty list after a few minutes
 			if (ringHosts.size() < 1) {
 			    ringHosts.add(discoHost);
@@ -55,7 +55,8 @@ public class CassandraRing extends Agent {
 				LOGGER.debug("getting metrics for host [" + host + "]...");
 
 				try {
-					List<Metric> metrics = JMXHelper.run(host, config.getString("jmx_port"), new JMXTemplate<List<Metric>>() {
+				    List<Metric> metrics = JMXHelper.run(host, config.getString("jmx_port"), config.getString("username"), config.getString("password"),
+									 new JMXTemplate<List<Metric>>() {
 						@Override
 						public List<Metric> execute(MBeanServerConnection connection) throws Exception {
 

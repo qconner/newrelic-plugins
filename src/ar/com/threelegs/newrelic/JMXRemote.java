@@ -17,7 +17,7 @@ import com.typesafe.config.ConfigException;
 
 public class JMXRemote extends Agent {
 	private static final Logger LOGGER = Logger.getLogger(JMXRemote.class);
-	private String name, host, port, metricPrefix;
+	private String name, host, port, metricPrefix, username, password;
 	private List<? extends Config> JMXList;
 	
 	public JMXRemote(Config config) {
@@ -29,6 +29,8 @@ public class JMXRemote extends Agent {
 		this.name = config.getString("name");
 		this.host = config.getString("host");
 		this.port = config.getString("port");
+		this.username = config.getString("username");
+		this.password = config.getString("password");
 		this.JMXList = config.getConfigList("metrics");
 		this.metricPrefix = "JMX/hosts/" + host +":" + port;
 	}
@@ -45,7 +47,7 @@ public class JMXRemote extends Agent {
 		try {
 			LOGGER.debug("Connecting to host [" + this.host + ":" + this.port + "]...");
 				try {
-					List<Metric> metrics = JMXHelper.run(this.host, this.port, new JMXTemplate<List<Metric>>() {
+				    List<Metric> metrics = JMXHelper.run(this.host, this.port, this.username, this.password, new JMXTemplate<List<Metric>>() {
 						@Override
 						public List<Metric> execute(MBeanServerConnection connection) throws Exception {
 							List<? extends Config> myList = JMXList;

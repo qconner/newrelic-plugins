@@ -12,9 +12,9 @@ import ar.com.threelegs.newrelic.jmx.JMXTemplate;
 public class CassandraHelper {
 
 	@SuppressWarnings("rawtypes")
-	public static List<String> getRingHosts(String discoveryHost, String jmxPort) throws Exception {
+	public static List<String> getRingHosts(String discoveryHost, String jmxPort, String user, String pass) throws Exception {
 
-		return JMXHelper.run(discoveryHost, jmxPort, new JMXTemplate<List<String>>() {
+		return JMXHelper.run(discoveryHost, jmxPort, user, pass, new JMXTemplate<List<String>>() {
 			@Override
 			public List<String> execute(MBeanServerConnection connection) throws Exception {
 				List<String> ret = new ArrayList<String>();

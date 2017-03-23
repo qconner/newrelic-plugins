@@ -2,6 +2,7 @@ package ar.com.threelegs.newrelic.jmx;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Set;
@@ -21,15 +22,20 @@ public class JMXHelper {
 	
 	private static final Logger LOGGER = Logger.getLogger(JMXHelper.class);
 	
-	public static <T> T run(String host, String port, JMXTemplate<T> template) throws ConnectionException {
+	public static <T> T run(String host, String port, String username, String password, JMXTemplate<T> template) throws ConnectionException {
 		JMXServiceURL address;
 		JMXConnector connector = null;
 		T value = null;
 
 		try {
 			address = new JMXServiceURL("service:jmx:rmi:///jndi/rmi://" + host + ":" + port + "/jmxrmi");
+			Map<String, String[]> env = new Hashtable<String, String[]>();
+			if (username != null && password != null) {
+			    String[] s = { username, password };
+			    env.put(JMXConnector.CREDENTIALS, s);
+			}
 			try {
-				connector = JMXConnectorFactory.connect(address);
+				connector = JMXConnectorFactory.connect(address, env);
 			} catch (IOException ex) {
 				throw new ConnectionException(host, ex);
 			}
