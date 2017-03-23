@@ -137,6 +137,18 @@ public class CassandraRing extends Agent {
 							metrics.add(new Metric("Cassandra/global/Cache/RowCache/Size", "bytes", rcs));
 							metrics.add(new Metric("Cassandra/global/Cache/RowCache/Entries", "count", rce));
 
+							// dropped mutations and dropped hints
+							Long droppedMutations = JMXHelper.queryAndGetAttribute(connection,
+									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=DroppedMessage", "scope=MUTATION", "name=Dropped"),
+									"Count");
+							Long droppedHints = JMXHelper.queryAndGetAttribute(connection,
+									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=DroppedMessage", "scope=HINT", "name=Dropped"),
+									"Count");
+							metrics.add(new Metric("Cassandra/hosts/" + host + "/DroppedMessage/Mutation", "count", droppedMutations));
+							metrics.add(new Metric("Cassandra/hosts/" + host + "/DroppedMessage/Hint", "count", droppedHints));
+							metrics.add(new Metric("Cassandra/global/DroppedMessage/Mutation", "count", droppedMutations));
+							metrics.add(new Metric("Cassandra/global/DroppedMessage/Hint", "count", droppedHints));
+
 							return metrics;
 						}
 
