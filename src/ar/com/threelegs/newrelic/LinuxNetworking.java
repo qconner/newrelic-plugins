@@ -42,7 +42,7 @@ public class LinuxNetworking extends Agent {
         try {
             LOGGER.debug("read and parse counters from /proc/net/snmp");
 
-            BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream("foo"))); ///proc/net/snmp")));
+            BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream("/proc/net/snmp")));
             String line;
             long outSegs = -1, reXmitSegs = -1;
             boolean headersFound = false;
