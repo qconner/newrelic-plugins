@@ -55,7 +55,7 @@ public class LinuxNetworking extends Agent {
                     if (!headersFound) {
                         // expect column names
                         for (int i=1; i < tokens.length; i++) {
-                            LOGGER.debug("token: " + tokens[i]);
+                            //LOGGER.debug("token: " + tokens[i]);
                             if (tokens[i].equals("OutSegs")) {
                                 segColWanted = i;
                             }
@@ -85,19 +85,23 @@ public class LinuxNetworking extends Agent {
                 proxyPacketLoss = 0.0;
             else {
                 proxyPacketLoss = (double)(reXmitSegs - lastReXmitSegs) / (double)(outSegs - lastOutSegs);
+		LOGGER.debug("lastReXmitSegs: " + lastReXmitSegs);
+		LOGGER.debug("lastOutSegs: " + lastOutSegs);
+		LOGGER.debug("proxyPacketLoss: " + proxyPacketLoss);
 	    }
 	    // remember last counts
             lastReXmitSegs = reXmitSegs;
 	    lastOutSegs = outSegs;
 
+	    // add to metrics list
             if (outSegs >= 0 && reXmitSegs >= 0) {
                 allMetrics.add(new Metric("Linux/Networking/TCPOutSegments", "count", outSegs));
                 allMetrics.add(new Metric("Linux/Networking/TCPRetransmitSegments", "count", reXmitSegs));
                 allMetrics.add(new Metric("Linux/Networking/ProxyPacketLossRateSinceBoot", "rate", (double)reXmitSegs / outSegs));
                 allMetrics.add(new Metric("Linux/Networking/ProxyPacketLossRate", "rate", proxyPacketLoss));
 
-                allMetrics.add(new Metric("Custom/LinuxNetworking/TCPOutSegments", "count", outSegs));
-                allMetrics.add(new Metric("Custom/LinuxNetworking/TCPRetransmitSegments", "count", reXmitSegs));
+                //allMetrics.add(new Metric("Custom/LinuxNetworking/TCPOutSegments", "count", outSegs));
+                //allMetrics.add(new Metric("Custom/LinuxNetworking/TCPRetransmitSegments", "count", reXmitSegs));
             }
             else
                 LOGGER.warn("could not compute TCP segment retransmission rate");
