@@ -42,6 +42,20 @@ public class Main {
 					runner.register(new JMXRemote(i, pluginName, pluginVersion));
 				}
 				LOGGER.info("done!");
+			} else if ("LinuxVM".equalsIgnoreCase(type)) {
+				LOGGER.info("instantiating the Linux Virtual Memory agent...");
+				String pluginName = c.hasPath("plugin_name") ? c.getString("plugin_name") : Defaults.LINUX_VM_PLUGIN_NAME;
+				String pluginVersion = c.hasPath("plugin_version") ? c.getString("plugin_version") : Defaults.VERSION;
+
+				runner.register(new LinuxVM(c, pluginName, pluginVersion));
+				LOGGER.info("done!");
+			} else if ("LinuxNetworking".equalsIgnoreCase(type)) {
+				LOGGER.info("instantiating the Linux Networking agent(s)...");
+				String pluginName = c.hasPath("plugin_name") ? c.getString("plugin_name") : Defaults.LINUX_NETWORKING_PLUGIN_NAME;
+				String pluginVersion = c.hasPath("plugin_version") ? c.getString("plugin_version") : Defaults.VERSION;
+
+				runner.register(new LinuxNetworking(c, pluginName, pluginVersion));
+				LOGGER.info("done!");
 			}
 		}
 
