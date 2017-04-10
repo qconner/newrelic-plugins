@@ -1,5 +1,8 @@
 package ar.com.threelegs.newrelic;
 
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -17,195 +20,162 @@ import com.typesafe.config.Config;
 
 public class LinuxVM extends Agent {
 
-	private static final Logger LOGGER = Logger.getLogger(LinuxVM.class);
-	private String name;
-	private Config config;
+    private static final Logger LOGGER = Logger.getLogger(LinuxVM.class);
+    private String name;
+    private Config config;
 
-	public LinuxVM(Config config, String pluginName, String pluginVersion) {
-		super(pluginName, pluginVersion);
-		this.name = config.getString("name");
-		this.config = config;
-	}
+    public LinuxVM(Config config, String pluginName, String pluginVersion) {
+	super(pluginName, pluginVersion);
+	this.name = config.getString("name");
+	this.config = config;
+    }
 
-	@Override
-	public String getComponentHumanLabel() {
-		return name;
-	}
+    @Override
+    public String getComponentHumanLabel() {
+	return name;
+    }
 
-	@Override
-	public void pollCycle() {
-               LOGGER.debug("starting poll cycle");
-               List<Metric> allMetrics = new ArrayList<Metric>();
-		try {
-		        String discoHost = config.getString("discovery_host");
-                        LOGGER.debug("getting ring hosts from discovery_host " + discoHost);
-			List<String> ringHosts = CassandraHelper.getRingHosts(discoHost, config.getString("jmx_port"), config.getString("username"), config.getString("password"));
-			// TODO: figure out why C* returns an empty list after a few minutes
-			if (ringHosts.size() < 1) {
-			    ringHosts.add(discoHost);
-			    LOGGER.warn("cassandra JMX returned an empty list of nodes.  using discovery host as a fallback");
-			}
+    @Override
+    public void pollCycle() {
+        LOGGER.debug("starting poll cycle");
+        List<Metric> allMetrics = new ArrayList<Metric>();
 
-			LOGGER.debug("getting metrics for hosts [" + ringHosts + "]...");
+        try {
+            LOGGER.debug("read and parse counters from /proc/vmstat");
 
-			allMetrics.add(new Metric("Cassandra/global/totalHosts", "count", ringHosts.size()));
-			int downCount = 0;
+            BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream("/proc/vmstat")));
+            String line;
 
-			for (final String host : ringHosts) {
-				LOGGER.debug("getting metrics for host [" + host + "]...");
+	    //
+	    long pgscan_kswapd_dma = -1;
+	    long pgscan_kswapd_dma32 = -1;
+	    long pgscan_kswapd_normal = -1;
+	    long pgscan_kswapd_movable = -1;
+	    //
+	    long pgscan_direct_dma = -1;
+	    long pgscan_direct_dma32 = -1;
+	    long pgscan_direct_normal = -1;
+	    long pgscan_direct_movable = -1;
+	    //
+	    long pgscan_direct_throttle = -1;
+	    //
+	    long pgpgin = -1;
+	    long pgpgout = -1;
+	    long pswpin = -1;
+	    long pswpout = -1;
+	    //
+            while ((line = br.readLine()) != null) {
+                String[] tokens = line.split(" ");
+                //LOGGER.debug("tokens[0]: " + tokens[0]);
+                //LOGGER.debug("tokens[1]: " + tokens[1]);
+		if (tokens.length == 2) {
+                    switch (tokens[0]) {
+			case "pgscan_kswapd_dma":
+                            pgscan_kswapd_dma = Long.parseLong(tokens[1]);
+			    break;
+			case "pgscan_kswapd_dma32":
+                            pgscan_kswapd_dma32 = Long.parseLong(tokens[1]);
+			    break;
+			case "pgscan_kswapd_normal":
+                            pgscan_kswapd_normal = Long.parseLong(tokens[1]);
+			    break;
+			case "pgscan_kswapd_movable":
+                            pgscan_kswapd_movable = Long.parseLong(tokens[1]);
+			    break;
+			case "pgscan_direct_dma":
+                            pgscan_direct_dma = Long.parseLong(tokens[1]);
+			    break;
+			case "pgscan_direct_dma32":
+                            pgscan_direct_dma32 = Long.parseLong(tokens[1]);
+			    break;
+			case "pgscan_direct_normal":
+                            pgscan_direct_normal = Long.parseLong(tokens[1]);
+			    break;
+			case "pgscan_direct_movable":
+                            pgscan_direct_movable = Long.parseLong(tokens[1]);
+			    break;
+			case "pgscan_direct_throttle":
+                            pgscan_direct_throttle = Long.parseLong(tokens[1]);
+			    break;
+			case "pgpgin":
+                            pgpgin = Long.parseLong(tokens[1]);
+			    break;
+			case "pgpgout":
+                            pgpgout = Long.parseLong(tokens[1]);
+			    break;
+			case "pswpin":
+                            pswpin = Long.parseLong(tokens[1]);
+			    break;
+			case "pswpout":
+                            pswpout = Long.parseLong(tokens[1]);
+			    break;
+                        default:
+                            // ignore
+			    break;
+		    }
+                }
+            }
+            br.close();
 
-				try {
-				    List<Metric> metrics = JMXHelper.run(host, config.getString("jmx_port"), config.getString("username"), config.getString("password"),
-									 new JMXTemplate<List<Metric>>() {
-						@Override
-						public List<Metric> execute(MBeanServerConnection connection) throws Exception {
+	    // aggregate normal and direct page scan daemon activity
+	    long pgscank = pgscan_kswapd_dma +  pgscan_kswapd_dma32 + pgscan_kswapd_normal + pgscan_kswapd_movable;
+	    long pgscand = pgscan_direct_dma + pgscan_direct_dma32 + pgscan_direct_normal + pgscan_direct_movable;
 
-							ArrayList<Metric> metrics = new ArrayList<Metric>();
+	    // add to metrics list
+            if (pgscank < 0 || pgscand < 0) {
+                LOGGER.warn("could not determine pgscank and pgscand rates");
+	    }
+	    else {
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscank", "rate", pgscank));
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscand", "rate", pgscand));
+		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscand_throttle", "rate", pgscan_direct_throttle));
 
-							// Latency
-							Double rl = JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest", "Read", "Mean");
-							TimeUnit rlUnit = TimeUnit.valueOf(((String)JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest", "Read", "DurationUnit")).toUpperCase());
-							rl = toMillis(rl, rlUnit);
+		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_dma", "rate", pgscan_kswapd_dma));
+		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_dma32", "rate", pgscan_kswapd_dma32));
+		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_normal", "rate", pgscan_kswapd_normal));
+		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_movable", "rate", pgscan_kswapd_movable));
 
-							Double wl = JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest", "Write", "Mean");
-							TimeUnit wlUnit = TimeUnit.valueOf(((String)JMXHelper.queryAndGetAttribute(connection, "org.apache.cassandra.metrics", "Latency", "ClientRequest", "Write", "DurationUnit")).toUpperCase());
-							wl = toMillis(wl, wlUnit);
+		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_dma", "rate", pgscan_direct_dma));
+		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_dma32", "rate", pgscan_direct_dma32));
+		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_normal", "rate", pgscan_direct_normal));
+		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_movable", "rate", pgscan_direct_movable));
+	    }
+	    
 
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/Latency/Reads", "millis", rl));
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/Latency/Writes", "millis", wl));
-							metrics.add(new Metric("Cassandra/global/Latency/Reads", "millis", rl));
-							metrics.add(new Metric("Cassandra/global/Latency/Writes", "millis", wl));
+	    if (pgpgin < 0 || pgpgout < 0) {
+                LOGGER.warn("could not determine pgpgin and pgpgout counts");
+	    }
+	    else {
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgpgin", "count", pgpgin));
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgpgout", "count", pgpgout));
+	    }
 
-							// System
-							Integer cpt = JMXHelper.queryAndGetAttribute(connection,
-									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=Compaction", "name=PendingTasks"), "Value");
-							Long mpt = JMXHelper.queryAndGetAttribute(connection,
-												  JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics",
-																"type=ThreadPools",
-																"path=internal",
-																"scope=MemtablePostFlush",
-																"name=PendingTasks"), "Value");
+	    if (pswpin < 0 || pswpout < 0) {
+                LOGGER.warn("could not determine pswpin and pswpout counts");
+	    }
+	    else {
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pswpin", "count", pswpin));
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pswpout", "count", pswpout));
+            }
 
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/Compaction/PendingTasks", "count", cpt));
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/MemtableFlush/PendingTasks", "count", mpt));
 
-							// Storage
-							Long load = JMXHelper.queryAndGetAttribute(connection,
-												     JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics",
-																   "type=Storage",
-																   "name=Load"), "Count");
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/Storage/Data", "bytes", load));
-							metrics.add(new Metric("Cassandra/global/Storage/Data", "bytes", load));
-
-							Long commitLog = JMXHelper.queryAndGetAttribute(connection,
-													JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics",
-																      "type=CommitLog",
-																      "name=TotalCommitLogSize"), "Value");
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/Storage/CommitLog", "bytes", commitLog));
-							metrics.add(new Metric("Cassandra/global/Storage/CommitLog", "bytes", commitLog));
-
-							// Cache
-							Double kchr = JMXHelper.queryAndGetAttribute(connection,
-									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=Cache", "scope=KeyCache", "name=HitRate"),
-									"Value");
-							Long kcs = JMXHelper.queryAndGetAttribute(connection,
-									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=Cache", "scope=KeyCache", "name=Size"),
-									"Value");
-							Integer kce = JMXHelper.queryAndGetAttribute(connection,
-									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=Cache", "scope=KeyCache", "name=Entries"),
-									"Value");
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/Cache/KeyCache/HitRate", "rate", kchr));
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/Cache/KeyCache/Size", "bytes", kcs));
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/Cache/KeyCache/Entries", "count", kce));
-							metrics.add(new Metric("Cassandra/global/Cache/KeyCache/HitRate", "rate", kchr));
-							metrics.add(new Metric("Cassandra/global/Cache/KeyCache/Size", "bytes", kcs));
-							metrics.add(new Metric("Cassandra/global/Cache/KeyCache/Entries", "count", kce));
-
-							Double rchr = JMXHelper.queryAndGetAttribute(connection,
-									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=Cache", "scope=RowCache", "name=HitRate"),
-									"Value");
-							Long rcs = JMXHelper.queryAndGetAttribute(connection,
-									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=Cache", "scope=RowCache", "name=Size"),
-									"Value");
-							Integer rce = JMXHelper.queryAndGetAttribute(connection,
-									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=Cache", "scope=RowCache", "name=Entries"),
-									"Value");
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/Cache/RowCache/HitRate", "rate", rchr));
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/Cache/RowCache/Size", "bytes", rcs));
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/Cache/RowCache/Entries", "count", rce));
-							metrics.add(new Metric("Cassandra/global/Cache/RowCache/HitRate", "rate", rchr));
-							metrics.add(new Metric("Cassandra/global/Cache/RowCache/Size", "bytes", rcs));
-							metrics.add(new Metric("Cassandra/global/Cache/RowCache/Entries", "count", rce));
-
-							// dropped mutations and dropped hints
-							Long droppedMutations = JMXHelper.queryAndGetAttribute(connection,
-									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=DroppedMessage", "scope=MUTATION", "name=Dropped"),
-									"Count");
-							Long droppedHints = JMXHelper.queryAndGetAttribute(connection,
-									JMXHelper.getObjectNameByKeys("org.apache.cassandra.metrics", "type=DroppedMessage", "scope=HINT", "name=Dropped"),
-									"Count");
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/DroppedMessage/Mutation", "count", droppedMutations));
-							metrics.add(new Metric("Cassandra/hosts/" + host + "/DroppedMessage/Hint", "count", droppedHints));
-							metrics.add(new Metric("Cassandra/global/DroppedMessage/Mutation", "count", droppedMutations));
-							metrics.add(new Metric("Cassandra/global/DroppedMessage/Hint", "count", droppedHints));
-
-							return metrics;
-						}
-
-						private Double toMillis(Double sourceValue, TimeUnit sourceUnit) {
-							switch (sourceUnit) {
-							case DAYS:
-								return sourceValue * 86400000;
-							case MICROSECONDS:
-								return sourceValue * 0.001;
-							case HOURS:
-								return sourceValue * 3600000;
-							case MILLISECONDS:
-								return sourceValue;
-							case MINUTES:
-								return sourceValue * 60000;
-							case NANOSECONDS:
-								return sourceValue * 1.0e-6;
-							case SECONDS:
-								return sourceValue * 1000;
-							default:
-								return sourceValue;
-							}
-						}
-					});
-
-					if (metrics != null)
-						allMetrics.addAll(metrics);
-				} catch (ConnectionException e) {
-					allMetrics.add(new Metric("Cassandra/downtime/hosts/" + e.getHost(), "value", 1));
-					downCount++;
-					allMetrics.add(new Metric("Cassandra/downtime/global", "count", downCount));
-					e.printStackTrace();
-				} catch (Exception e) {
-					LOGGER.error(e);
-				}
-			}
-
-		} catch (ConnectionException e) {
-			allMetrics.add(new Metric("Cassandra/downtime/hosts/" + e.getHost(), "value", 1));
-			// TODO: change to correct value (qty of failed connections) when we
-			// make discoveryHosts a list.
-			allMetrics.add(new Metric("Cassandra/downtime/global", "count", 1));
-			LOGGER.error(e);
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		} finally {
-			LOGGER.debug("pushing " + allMetrics.size() + " metrics...");
-			int dropped = 0;
-			for (Metric m : allMetrics) {
-				if (m.value != null && !m.value.toString().equals("NaN"))
-					reportMetric(m.name, m.valueType, m.value);
-				else {
-				    LOGGER.debug("dropping null/NaN metric: " + m.name);
-				    dropped++;
-				}
-			}
-			LOGGER.debug("pushing metrics: done! dropped (null/NaN) metrics: " + dropped);
-		}
-	}
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            LOGGER.debug("pushing " + allMetrics.size() + " metrics...");
+            int dropped = 0;
+            for (Metric m : allMetrics) {
+                if (m.value != null && !m.value.toString().equals("NaN")) {
+                    // plugin: Component
+                    reportMetric(m.name, m.valueType, m.value);
+                }
+                else {
+                    LOGGER.debug("dropping null/NaN metric: " + m.name);
+                    dropped++;
+                }
+            }
+            LOGGER.debug("pushing metrics: done! dropped (null/NaN) metrics: " + dropped);
+        }
+    }
 }

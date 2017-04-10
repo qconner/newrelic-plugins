@@ -14,6 +14,8 @@ import com.newrelic.metrics.publish.Agent;
 import com.newrelic.metrics.publish.util.Logger;
 import com.typesafe.config.Config;
 
+import ar.com.threelegs.newrelic.Hostname;
+
 public class LinuxNetworking extends Agent {
 
     private static final Logger LOGGER = Logger.getLogger(LinuxNetworking.class);
@@ -41,6 +43,7 @@ public class LinuxNetworking extends Agent {
 
         try {
             LOGGER.debug("read and parse counters from /proc/net/snmp");
+            // TODO:  /proc/net/netstat
 
             BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream("/proc/net/snmp")));
             String line;
@@ -78,30 +81,27 @@ public class LinuxNetworking extends Agent {
             }
             br.close();
 
-	    // compute rate of packet loss here
-	    // ILO doing in New Relic
+            // compute rate of packet loss here
+            // ILO doing in New Relic
             Double proxyPacketLoss;
             if (lastReXmitSegs == -1)
                 proxyPacketLoss = 0.0;
             else {
                 proxyPacketLoss = (double)(reXmitSegs - lastReXmitSegs) / (double)(outSegs - lastOutSegs);
-		LOGGER.debug("lastReXmitSegs: " + lastReXmitSegs);
-		LOGGER.debug("lastOutSegs: " + lastOutSegs);
-		LOGGER.debug("proxyPacketLoss: " + proxyPacketLoss);
-	    }
-	    // remember last counts
+                LOGGER.debug("lastReXmitSegs: " + lastReXmitSegs);
+                LOGGER.debug("lastOutSegs: " + lastOutSegs);
+                LOGGER.debug("proxyPacketLoss: " + proxyPacketLoss);
+            }
+            // remember last counts
             lastReXmitSegs = reXmitSegs;
-	    lastOutSegs = outSegs;
+            lastOutSegs = outSegs;
 
-	    // add to metrics list
+            // add to metrics list
             if (outSegs >= 0 && reXmitSegs >= 0) {
-                allMetrics.add(new Metric("Linux/Networking/TCPOutSegments", "count", outSegs));
-                allMetrics.add(new Metric("Linux/Networking/TCPRetransmitSegments", "count", reXmitSegs));
-                allMetrics.add(new Metric("Linux/Networking/ProxyPacketLossRateSinceBoot", "rate", (double)reXmitSegs / outSegs));
-                allMetrics.add(new Metric("Linux/Networking/ProxyPacketLossRate", "rate", proxyPacketLoss));
-
-                //allMetrics.add(new Metric("Custom/LinuxNetworking/TCPOutSegments", "count", outSegs));
-                //allMetrics.add(new Metric("Custom/LinuxNetworking/TCPRetransmitSegments", "count", reXmitSegs));
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/TCPOutSegments", "count", outSegs));
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/TCPRetransmitSegments", "count", reXmitSegs));
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/ProxyPacketLossRateSinceBoot", "rate", (double)reXmitSegs / outSegs));
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/ProxyPacketLossRate", "rate", proxyPacketLoss));
             }
             else
                 LOGGER.warn("could not compute TCP segment retransmission rate");
