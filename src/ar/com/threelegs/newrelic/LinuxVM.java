@@ -23,16 +23,22 @@ public class LinuxVM extends Agent {
     private static final Logger LOGGER = Logger.getLogger(LinuxVM.class);
     private String name;
     private Config config;
+    private long last_pgscank = -1L;
+    private long last_pgscand = -1L;
+    private long last_pgpgin = -1L;
+    private long last_pgpgout = -1L;
+    private long last_pswpin = -1L;
+    private long last_pswpout = -1L;
 
     public LinuxVM(Config config, String pluginName, String pluginVersion) {
-	super(pluginName, pluginVersion);
-	this.name = config.getString("name");
-	this.config = config;
+        super(pluginName, pluginVersion);
+        this.name = config.getString("name");
+        this.config = config;
     }
 
     @Override
     public String getComponentHumanLabel() {
-	return name;
+        return name;
     }
 
     @Override
@@ -46,114 +52,163 @@ public class LinuxVM extends Agent {
             BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream("/proc/vmstat")));
             String line;
 
-	    //
-	    long pgscan_kswapd_dma = -1;
-	    long pgscan_kswapd_dma32 = -1;
-	    long pgscan_kswapd_normal = -1;
-	    long pgscan_kswapd_movable = -1;
-	    //
-	    long pgscan_direct_dma = -1;
-	    long pgscan_direct_dma32 = -1;
-	    long pgscan_direct_normal = -1;
-	    long pgscan_direct_movable = -1;
-	    //
-	    long pgscan_direct_throttle = -1;
-	    //
-	    long pgpgin = -1;
-	    long pgpgout = -1;
-	    long pswpin = -1;
-	    long pswpout = -1;
-	    //
+            //
+            long pgscan_kswapd_dma = -1L;
+            long pgscan_kswapd_dma32 = -1L;
+            long pgscan_kswapd_normal = -1L;
+            long pgscan_kswapd_movable = -1L;
+            //
+            long pgscan_direct_dma = -1L;
+            long pgscan_direct_dma32 = -1L;
+            long pgscan_direct_normal = -1L;
+            long pgscan_direct_movable = -1L;
+            //
+            long pgscan_direct_throttle = -1L;
+            //
+            long pgpgin_now = -1L;
+            long pgpgout_now = -1L;
+            long pswpin_now = -1L;
+            long pswpout_now = -1L;
+            //
             while ((line = br.readLine()) != null) {
                 String[] tokens = line.split(" ");
                 //LOGGER.debug("tokens[0]: " + tokens[0]);
                 //LOGGER.debug("tokens[1]: " + tokens[1]);
-		if (tokens.length == 2) {
+                if (tokens.length == 2) {
                     switch (tokens[0]) {
-			case "pgscan_kswapd_dma":
+                        case "pgscan_kswapd_dma":
                             pgscan_kswapd_dma = Long.parseLong(tokens[1]);
-			    break;
-			case "pgscan_kswapd_dma32":
+                            break;
+                        case "pgscan_kswapd_dma32":
                             pgscan_kswapd_dma32 = Long.parseLong(tokens[1]);
-			    break;
-			case "pgscan_kswapd_normal":
+                            break;
+                        case "pgscan_kswapd_normal":
                             pgscan_kswapd_normal = Long.parseLong(tokens[1]);
-			    break;
-			case "pgscan_kswapd_movable":
+                            break;
+                        case "pgscan_kswapd_movable":
                             pgscan_kswapd_movable = Long.parseLong(tokens[1]);
-			    break;
-			case "pgscan_direct_dma":
+                            break;
+                        case "pgscan_direct_dma":
                             pgscan_direct_dma = Long.parseLong(tokens[1]);
-			    break;
-			case "pgscan_direct_dma32":
+                            break;
+                        case "pgscan_direct_dma32":
                             pgscan_direct_dma32 = Long.parseLong(tokens[1]);
-			    break;
-			case "pgscan_direct_normal":
+                            break;
+                        case "pgscan_direct_normal":
                             pgscan_direct_normal = Long.parseLong(tokens[1]);
-			    break;
-			case "pgscan_direct_movable":
+                            break;
+                        case "pgscan_direct_movable":
                             pgscan_direct_movable = Long.parseLong(tokens[1]);
-			    break;
-			case "pgscan_direct_throttle":
+                            break;
+                        case "pgscan_direct_throttle":
                             pgscan_direct_throttle = Long.parseLong(tokens[1]);
-			    break;
-			case "pgpgin":
-                            pgpgin = Long.parseLong(tokens[1]);
-			    break;
-			case "pgpgout":
-                            pgpgout = Long.parseLong(tokens[1]);
-			    break;
-			case "pswpin":
-                            pswpin = Long.parseLong(tokens[1]);
-			    break;
-			case "pswpout":
-                            pswpout = Long.parseLong(tokens[1]);
-			    break;
+                            break;
+                        case "pgpgin":
+                            pgpgin_now = Long.parseLong(tokens[1]);
+                            break;
+                        case "pgpgout":
+                            pgpgout_now = Long.parseLong(tokens[1]);
+                            break;
+                        case "pswpin":
+                            pswpin_now = Long.parseLong(tokens[1]);
+                            break;
+                        case "pswpout":
+                            pswpout_now = Long.parseLong(tokens[1]);
+                            break;
                         default:
                             // ignore
-			    break;
-		    }
+                            break;
+                    }
                 }
             }
             br.close();
 
-	    // aggregate normal and direct page scan daemon activity
-	    long pgscank = pgscan_kswapd_dma +  pgscan_kswapd_dma32 + pgscan_kswapd_normal + pgscan_kswapd_movable;
-	    long pgscand = pgscan_direct_dma + pgscan_direct_dma32 + pgscan_direct_normal + pgscan_direct_movable;
+            // compute normal page scan daemon activity
+            long pgscank_now = pgscan_kswapd_dma +  pgscan_kswapd_dma32 + pgscan_kswapd_normal + pgscan_kswapd_movable;
+            long pgscank;
+            if (last_pgscank == -1)
+                pgscank = 0;
+            else
+                pgscank = pgscank_now - last_pgscank;
+            last_pgscank = pgscank_now;
 
-	    // add to metrics list
+            // compute direct page scan daemon event counts
+            long pgscand_now = pgscan_direct_dma + pgscan_direct_dma32 + pgscan_direct_normal + pgscan_direct_movable;
+            long pgscand;
+            if (last_pgscand == -1)
+                pgscand = 0;
+            else
+                pgscand = pgscand_now - last_pgscand;
+            last_pgscand = pgscand_now;
+            
+            // add to metrics list
             if (pgscank < 0 || pgscand < 0) {
                 LOGGER.warn("could not determine pgscank and pgscand rates");
-	    }
-	    else {
-                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscank", "rate", pgscank));
-                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscand", "rate", pgscand));
-		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscand_throttle", "rate", pgscan_direct_throttle));
+            }
+            else {
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscank", "count", pgscank));
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscand", "count", pgscand));
 
-		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_dma", "rate", pgscan_kswapd_dma));
-		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_dma32", "rate", pgscan_kswapd_dma32));
-		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_normal", "rate", pgscan_kswapd_normal));
-		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_movable", "rate", pgscan_kswapd_movable));
+                //allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_dma", "count", pgscan_kswapd_dma));
+                //allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_dma32", "count", pgscan_kswapd_dma32));
+                //allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_normal", "count", pgscan_kswapd_normal));
+                //allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_kswapd_movable", "count", pgscan_kswapd_movable));
 
-		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_dma", "rate", pgscan_direct_dma));
-		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_dma32", "rate", pgscan_direct_dma32));
-		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_normal", "rate", pgscan_direct_normal));
-		allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_movable", "rate", pgscan_direct_movable));
-	    }
-	    
+                //allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_dma", "count", pgscan_direct_dma));
+                //allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_dma32", "count", pgscan_direct_dma32));
+                //allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_normal", "count", pgscan_direct_normal));
+                //allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_movable", "count", pgscan_direct_movable));
+                //
+                //allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgscan_direct_throttle", "count", pgscan_direct_throttle));
+            }
 
-	    if (pgpgin < 0 || pgpgout < 0) {
+
+            // compute page in event count
+            long pgpgin;
+            if (last_pgpgin == -1)
+                pgpgin = 0;
+            else
+                pgpgin = pgpgin_now - last_pgpgin;
+            last_pgpgin = pgpgin_now;
+
+            // compute page out event count
+            long pgpgout;
+            if (last_pgpgout == -1)
+                pgpgout = 0;
+            else
+                pgpgout = pgpgout_now - last_pgpgout;
+            last_pgpgout = pgpgout_now;
+
+            // add to metrics list
+            if (pgpgin < 0 || pgpgout < 0) {
                 LOGGER.warn("could not determine pgpgin and pgpgout counts");
-	    }
-	    else {
+            }
+            else {
                 allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgpgin", "count", pgpgin));
                 allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pgpgout", "count", pgpgout));
-	    }
+            }
 
-	    if (pswpin < 0 || pswpout < 0) {
+            // compute swap in event count
+            long pswpin;
+            if (last_pswpin == -1)
+                pswpin = 0;
+            else
+                pswpin = pswpin_now - last_pswpin;
+            last_pswpin = pswpin_now;
+
+            // compute swap out event count
+            long pswpout;
+            if (last_pswpout == -1)
+                pswpout = 0;
+            else
+                pswpout = pswpout_now - last_pswpout;
+            last_pswpout = pswpout_now;
+
+            // add to metrics list
+            if (pswpin < 0 || pswpout < 0) {
                 LOGGER.warn("could not determine pswpin and pswpout counts");
-	    }
-	    else {
+            }
+            else {
                 allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pswpin", "count", pswpin));
                 allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxVirtualMemory/pswpout", "count", pswpout));
             }
