@@ -53,7 +53,7 @@ public class LinuxNetworking extends Agent {
             
             while ((line = br.readLine()) != null) {
                 String[] tokens = line.split(" ");
-                LOGGER.debug("tokens[0]: " + tokens[0]);
+                //LOGGER.debug("tokens[0]: " + tokens[0]);
                 if (tokens[0].equals("Tcp:")) {
                     if (!headersFound) {
                         // expect column names
@@ -81,27 +81,40 @@ public class LinuxNetworking extends Agent {
             }
             br.close();
 
-            // compute rate of packet loss here
-            // ILO doing in New Relic
-            Double proxyPacketLoss;
+            // compute delta for outSegs
+            // New Relic has a 32 bit integer which doesn't accommodate Linux counters
+            long outSegs_delta;
+            if (lastOutSegs == -1)
+                outSegs_delta = 0;
+            else
+                outSegs_delta = outSegs - lastOutSegs;
+            lastOutSegs = outSegs;
+
+            // compute delta for ReTransmitSegs
+            // New Relic has a 32 bit integer which doesn't accommodate Linux counters
+            long reXmitSegs_delta;
             if (lastReXmitSegs == -1)
+                reXmitSegs_delta = 0;
+            else
+                reXmitSegs_delta = reXmitSegs - lastReXmitSegs;
+            lastReXmitSegs = reXmitSegs;
+
+            // compute rate of packet loss here
+            // New Relic has a 32 bit integer which doesn't accommodate Linux counters
+            Double proxyPacketLoss;
+            if (outSegs_delta < 1)
                 proxyPacketLoss = 0.0;
             else {
-                proxyPacketLoss = (double)(reXmitSegs - lastReXmitSegs) / (double)(outSegs - lastOutSegs);
-                LOGGER.debug("lastReXmitSegs: " + lastReXmitSegs);
-                LOGGER.debug("lastOutSegs: " + lastOutSegs);
+                proxyPacketLoss = (double)(reXmitSegs_delta) / (double)(outSegs_delta);
                 LOGGER.debug("proxyPacketLoss: " + proxyPacketLoss);
             }
-            // remember last counts
-            lastReXmitSegs = reXmitSegs;
-            lastOutSegs = outSegs;
 
             // add to metrics list
             if (outSegs >= 0 && reXmitSegs >= 0) {
-                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/TCPOutSegments", "count", outSegs));
-                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/TCPRetransmitSegments", "count", reXmitSegs));
-                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/ProxyPacketLossRateSinceBoot", "rate", (double)reXmitSegs / outSegs));
-                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/ProxyPacketLossRate", "rate", proxyPacketLoss));
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/TCPOutSegments", "count", outSegs_delta));
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/TCPRetransmitSegments", "count", reXmitSegs_delta));
+                //allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/ProxyPacketLossRateSinceBoot", "rate", (double)reXmitSegs / outSegs));
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/ProxyPacketLossTCPRetransmitRate", "rate", proxyPacketLoss));
             }
             else
                 LOGGER.warn("could not compute TCP segment retransmission rate");
