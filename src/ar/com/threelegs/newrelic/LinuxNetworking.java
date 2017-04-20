@@ -51,11 +51,11 @@ public class LinuxNetworking extends Agent {
 
             BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream("/proc/net/snmp")));
 
-            Set rexmitMetrics = new TreeSet<String>();
-            rexmitMetrics.add("OutSegs");
-            rexmitMetrics.add("RetransSegs");
+            Set snmpMetrics = new TreeSet<String>();
+            snmpMetrics.add("OutSegs");
+            snmpMetrics.add("RetransSegs");
 
-            Map<String, Long> metricValues = tcpMetrics(rexmitMetrics, br, "Tcp:");
+            Map<String, Long> metricValues = tcpMetrics(snmpMetrics, br, "Tcp:");
             br.close();
             Map<String, Long> deltaMetrics = computeDeltas(metricValues);
 
@@ -68,22 +68,37 @@ public class LinuxNetworking extends Agent {
                 retransSegs = deltaMetrics.get("RetransSegs");
                 allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/TCPRetransmitSegments", "count", retransSegs));
             }
-            if (outSegs > 0 && retransSegs > 0) {
-                double rate = (double)outSegs / (double)retransSegs;
-                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/ProxyPacketLossTCPRetransmitRate", "rate", rate));
+            if (outSegs > 0) {
+                double rate = (double)retransSegs / (double)outSegs;
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/TCPRetransmitRate", "rate", rate));
             }
 
 
             LOGGER.debug("read and parse counters from /proc/net/netstat");
             br = new BufferedReader(new InputStreamReader(new FileInputStream("/proc/net/netstat")));
 
-            Set dsackMetrics = new TreeSet<String>();
-            dsackMetrics.add("TCPDSACKRecv");
-            dsackMetrics.add("TCPDSACKOfoRecv");
+            Set netstatMetrics = new TreeSet<String>();
+            netstatMetrics.add("TCPDSACKRecv");          // DSACK receipt
+            netstatMetrics.add("TCPDSACKOfoRecv");       // out of order DSACK receipt
+            netstatMetrics.add("TCPLossProbes");         // Tail Loss Probe sent
+            netstatMetrics.add("TCPLossProbeRecovery");  // confirmed packet loss
 
-            metricValues = tcpMetrics(dsackMetrics, br, "TcpExt");
+            metricValues = tcpMetrics(netstatMetrics, br, "TcpExt:");
             br.close();
             deltaMetrics = computeDeltas(metricValues);
+
+	    if (outSegs > 0 && deltaMetrics.keySet().contains("TCPDSACKRecv") && deltaMetrics.keySet().contains("TCPDSACKOfoRecv")) {
+                long ds = deltaMetrics.get("TCPDSACKRecv");
+		long ofo = deltaMetrics.get("TCPDSACKOfoRecv");
+                double dsack_rate = (double)(ds + ofo) / (double)outSegs;
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/TCPDSACKRate", "rate", dsack_rate));
+            }
+
+            Long tlps = deltaMetrics.get("TCPLossProbes");
+            if (outSegs > 0 && deltaMetrics.keySet().contains("TCPLossProbes")) {
+                double tlp_rate = (double)deltaMetrics.get("TCPLossProbes") / (double)outSegs;
+                allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/TCPLossProbeRate", "rate", tlp_rate));
+            }
 
             for (String metric : deltaMetrics.keySet()) {
                     allMetrics.add(new Metric("hosts/" + Hostname.hostname(config) + "/LinuxNetworking/" + metric, "count", deltaMetrics.get(metric)));
@@ -115,17 +130,14 @@ public class LinuxNetworking extends Agent {
 
         String line;
         boolean headersFound = false;
-        int dsackColWanted = -1, dsackOfoColWanted = -1;
 
         try {
             while ((line = reader.readLine()) != null) {
                 String[] tokens = line.split(" ");
-                LOGGER.debug("tokens[0]: " + tokens[0]);
                 if (tokens[0].equals(headerPrefix)) {
                     if (!headersFound) {
                         // expect column names
                         for (int i=1; i < tokens.length; i++) {
-                            LOGGER.debug("token: " + tokens[i]);
                             // check for a desired metric
                             if (metrics.contains(tokens[i])) {
                                 // save column we found it in
@@ -146,7 +158,6 @@ public class LinuxNetworking extends Agent {
                         for (int i : metricColumns.keySet()) {
                             String name = metricColumns.get(i);
                             metricValues.put(name, Long.parseLong(tokens[i]));
-                            LOGGER.debug("  " + name + ":  " + metricValues.get(name));
                         }
                     }
                 }
