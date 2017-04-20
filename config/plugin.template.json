@@ -1,10 +1,12 @@
 {
   "agents" : [
     {
-	  "type":"cassandra",	  
+      "type":"cassandra",
       "name" : "Your Ring Name",
       "discovery_host" : "ip or host of one member of the ring",
-      "jmx_port" : 7199
+      "jmx_port" : 7199,
+      "username": "your_jmx_username",
+      "password": "your_jmx_secret"
     },
     {
       "type": "varnish",
@@ -37,6 +39,14 @@
           ]
         }
       ]
+    },
+    {
+        "type": "LinuxNetworking",
+        "name": "your cluster moniker"
+    },
+    {
+        "type": "LinuxVirtualMemory",
+        "name": "your cluster moniker"
     }
   ]
 }
