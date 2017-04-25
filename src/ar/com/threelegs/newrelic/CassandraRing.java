@@ -14,17 +14,27 @@ import ar.com.threelegs.newrelic.util.CassandraHelper;
 import com.newrelic.metrics.publish.Agent;
 import com.newrelic.metrics.publish.util.Logger;
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigException;
 
 public class CassandraRing extends Agent {
 
 	private static final Logger LOGGER = Logger.getLogger(CassandraRing.class);
-	private String name;
+        private String name, jmxUsername, jmxPassword;
 	private Config config;
 
 	public CassandraRing(Config config, String pluginName, String pluginVersion) {
 		super(pluginName, pluginVersion);
 		this.name = config.getString("name");
 		this.config = config;
+
+		try {
+		    this.jmxUsername = config.getString("username");
+		    this.jmxPassword = config.getString("password");
+		}
+		catch (ConfigException ce) {
+		    this.jmxUsername = null;
+		    this.jmxPassword = null;
+		}
 	}
 
 	@Override
@@ -39,7 +49,7 @@ public class CassandraRing extends Agent {
 		try {
 		        String discoHost = config.getString("discovery_host");
                         LOGGER.debug("getting ring hosts from discovery_host " + discoHost);
-			List<String> ringHosts = CassandraHelper.getRingHosts(discoHost, config.getString("jmx_port"), config.getString("username"), config.getString("password"));
+			List<String> ringHosts = CassandraHelper.getRingHosts(discoHost, config.getString("jmx_port"), jmxUsername, jmxPassword);
 			// TODO: figure out why C* returns an empty list after a few minutes
 			if (ringHosts.size() < 1) {
 			    ringHosts.add(discoHost);
@@ -55,7 +65,7 @@ public class CassandraRing extends Agent {
 				LOGGER.debug("getting metrics for host [" + host + "]...");
 
 				try {
-				    List<Metric> metrics = JMXHelper.run(host, config.getString("jmx_port"), config.getString("username"), config.getString("password"),
+				    List<Metric> metrics = JMXHelper.run(host, config.getString("jmx_port"), jmxUsername, jmxPassword,
 									 new JMXTemplate<List<Metric>>() {
 						@Override
 						public List<Metric> execute(MBeanServerConnection connection) throws Exception {
