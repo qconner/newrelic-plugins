@@ -1,0 +1,28 @@
+stages:
+  - build
+
+variables:
+  REG_URL: ${CI_REGISTRY}/addev/${CI_PROJECT_NAME}
+  APP_NAME: "newrelic-plugins"
+  JAVA_OPTS: "-XX:MaxMetaspaceSize=512m -Xms1024m -Xmx2048m -Dsbt.override.build.repos=true -Dsbt.repository.config=repositories -Dsbt.global.staging=cache/.staging -Dsbt.ivy.home=cache/.ivy2/ -Divy.home=cache/.ivy2/"
+
+non_master_build:
+  stage: build
+  except: 
+    - master
+    - tags
+  tags:
+    - docker
+  image: gitlab.spice.spiceworks.com:4567/base-images/sbt:0.13.12-centos
+  cache:
+    paths:
+      - cache
+  script:
+    - ant
+    - cp build/jar/plugin.jar .
+  artifacts:
+    name: "${CI_BUILD_NAME}_${CI_BUILD_REF_NAME}"
+    expire_in: 12 week
+    paths:
+      - plugin.jar
+
