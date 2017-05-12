@@ -18,11 +18,34 @@ non_master_build:
     paths:
       - cache
   script:
-    - ant
-    - cp build/jar/plugin.jar .
+    - ant dist
   artifacts:
     name: "${CI_BUILD_NAME}_${CI_BUILD_REF_NAME}"
-    expire_in: 12 week
+    expire_in: 2 week
     paths:
-      - plugin.jar
+      - build/jar/plugin.jar
+      - build/tar/newrelic_3legs_plugin-3.1.0/config/newrelic.template.json
+      - build/tar/newrelic_3legs_plugin-3.1.0/config/plugin.template.json
+      - dist/3.1.0/newrelic_3legs_plugin-3.1.0.tar.gz
+
+master_build:
+  stage: build
+  only:
+    - master
+    - tags
+  tags:
+    - docker
+  image: gitlab.spice.spiceworks.com:4567/quentinc/centos-jdk8-ant:master
+  cache:
+    paths:
+      - cache
+  script:
+    - ant dist
+  artifacts:
+    name: "${CI_BUILD_NAME}_${CI_BUILD_REF_NAME}"
+    paths:
+      - build/jar/plugin.jar
+      - build/tar/newrelic_3legs_plugin-3.1.0/config/newrelic.template.json
+      - build/tar/newrelic_3legs_plugin-3.1.0/config/plugin.template.json
+      - dist/3.1.0/newrelic_3legs_plugin-3.1.0.tar.gz
 
