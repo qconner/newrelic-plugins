@@ -13,7 +13,7 @@ non_master_build:
     - tags
   tags:
     - docker
-  image: gitlab.spice.spiceworks.com:4567/base-images/java:8
+  image: gitlab.spice.spiceworks.com:4567/quentinc/centos-jdk8-ant:master
   cache:
     paths:
       - cache
