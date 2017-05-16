@@ -19,14 +19,7 @@ non_master_build:
       - cache
   script:
     - ant dist
-  artifacts:
-    name: "${CI_BUILD_NAME}_${CI_BUILD_REF_NAME}"
-    expire_in: 2 week
-    paths:
-      - build/jar/plugin.jar
-      - build/tar/newrelic_3legs_plugin-3.1.0/config/newrelic.template.json
-      - build/tar/newrelic_3legs_plugin-3.1.0/config/plugin.template.json
-      - dist/3.1.0/newrelic_3legs_plugin-3.1.0.tar.gz
+    - curl --netrc -X PUT https://spiceworks.jfrog.io/spiceworks/build-generic/newrelic-plugins/newrelic_3legs_plugin-3.1.0.tar.gz -T dist/3.1.0/newrelic_3legs_plugin-3.1.0.tar.gz
 
 master_build:
   stage: build
@@ -41,11 +34,4 @@ master_build:
       - cache
   script:
     - ant dist
-  artifacts:
-    name: "${CI_BUILD_NAME}_${CI_BUILD_REF_NAME}"
-    paths:
-      - build/jar/plugin.jar
-      - build/tar/newrelic_3legs_plugin-3.1.0/config/newrelic.template.json
-      - build/tar/newrelic_3legs_plugin-3.1.0/config/plugin.template.json
-      - dist/3.1.0/newrelic_3legs_plugin-3.1.0.tar.gz
 
