@@ -1,7 +1,11 @@
 package ar.com.threelegs.newrelic.jmx;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.Map;
 import java.util.Hashtable;
 import java.util.List;
@@ -42,10 +46,41 @@ public class JMXHelper {
 			MBeanServerConnection mbs = connector.getMBeanServerConnection();
 
 			value = template.execute(mbs);
-		} catch (ConnectionException e) {
-			throw e;
-		} catch (Exception e) {
-			LOGGER.error(e);
+		} catch (ConnectionException e3) {
+		    LOGGER.info("failed to connect to JMX on " + host + ":" + port);
+		    // try falling back to localhost for JMX access if this IP is for this host
+		    try {
+			LOGGER.debug("check to see if failed connection is for the host where this NR plugin / agent is running");
+			if (isLocalIP(InetAddress.getByName(host))) {
+			    host = "localhost";
+			    LOGGER.info("IP is local.  Trying fallback JMX connection to " + host + ":" + port);
+			    address = new JMXServiceURL("service:jmx:rmi:///jndi/rmi://" + host + ":" + port + "/jmxrmi");
+			    Map<String, String[]> env = new Hashtable<String, String[]>();
+			    if (username != null && password != null) {
+				String[] s = { username, password };
+				env.put(JMXConnector.CREDENTIALS, s);
+			    }
+			    try {
+				connector = JMXConnectorFactory.connect(address, env);
+			    } catch (IOException ex) {
+				throw new ConnectionException(host, ex);
+			    }
+			    MBeanServerConnection mbs = connector.getMBeanServerConnection();
+			    value = template.execute(mbs);
+			}
+			else {
+			    throw e3;
+			}
+		    }
+		    catch (ConnectionException ce) {
+			LOGGER.warn("during JMX fallback, failed to connect to JMX on " + host + ":" + port);
+			throw ce;
+		    }
+		    catch (Exception e2) {
+			LOGGER.error(e2);
+		    }
+		} catch (Exception e1) {
+			LOGGER.error(e1);
 		} finally {
 			close(connector);
 		}
@@ -141,4 +176,33 @@ public class JMXHelper {
 		}
 	}
 
+	public static boolean isLocalIP(InetAddress addr) {
+	    // true if localhost
+	    if (addr.isLoopbackAddress())
+		return true;
+
+	    // also true if 127.x.x.x
+	    if (addr.isAnyLocalAddress())
+		return true;
+
+	    // look at each NIC
+	    try {
+		Enumeration<NetworkInterface> nics = NetworkInterface.getNetworkInterfaces();
+		while (nics.hasMoreElements()) {
+			NetworkInterface nic = nics.nextElement();
+			Enumeration<InetAddress> ips = nic.getInetAddresses();
+			while (ips.hasMoreElements()) {
+			    InetAddress ip = ips.nextElement();
+			    LOGGER.debug("isLocalIP? for " + addr + "  nic: " + ip);
+
+			    if (ip.equals(addr))
+				return true;
+			}
+		}
+	    }
+	    catch (SocketException e) {
+		return false;
+	    }
+	    return false;
+	}
 }

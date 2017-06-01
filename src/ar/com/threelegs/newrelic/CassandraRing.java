@@ -50,19 +50,20 @@ public class CassandraRing extends Agent {
 		        String discoHost = config.getString("discovery_host");
                         LOGGER.debug("getting ring hosts from discovery_host " + discoHost);
 			List<String> ringHosts = CassandraHelper.getRingHosts(discoHost, config.getString("jmx_port"), jmxUsername, jmxPassword);
+
 			// TODO: figure out why C* returns an empty list after a few minutes
 			if (ringHosts.size() < 1) {
 			    ringHosts.add(discoHost);
 			    LOGGER.warn("cassandra JMX returned an empty list of nodes.  using discovery host as a fallback");
 			}
 
-			LOGGER.debug("getting metrics for hosts [" + ringHosts + "]...");
+			LOGGER.info("getting metrics for hosts [" + ringHosts + "]...");
 
 			allMetrics.add(new Metric("Cassandra/global/totalHosts", "count", ringHosts.size()));
 			int downCount = 0;
 
 			for (final String host : ringHosts) {
-				LOGGER.debug("getting metrics for host [" + host + "]...");
+				LOGGER.info("getting metrics for host [" + host + "]...");
 
 				try {
 				    List<Metric> metrics = JMXHelper.run(host, config.getString("jmx_port"), jmxUsername, jmxPassword,
@@ -204,18 +205,21 @@ public class CassandraRing extends Agent {
 			LOGGER.error(e);
 		} catch (Exception e) {
 			throw new RuntimeException(e);
-		} finally {
-			LOGGER.debug("pushing " + allMetrics.size() + " metrics...");
-			int dropped = 0;
-			for (Metric m : allMetrics) {
-				if (m.value != null && !m.value.toString().equals("NaN"))
-					reportMetric(m.name, m.valueType, m.value);
-				else {
-				    LOGGER.debug("dropping null/NaN metric: " + m.name);
-				    dropped++;
-				}
-			}
-			LOGGER.debug("pushing metrics: done! dropped (null/NaN) metrics: " + dropped);
 		}
+
+		// fall-back to discovery host if none of the nodes
+
+		LOGGER.debug("pushing " + allMetrics.size() + " metrics...");
+		int dropped = 0;
+		for (Metric m : allMetrics) {
+		    if (m.value != null && !m.value.toString().equals("NaN"))
+			reportMetric(m.name, m.valueType, m.value);
+		    else {
+			LOGGER.debug("dropping null/NaN metric: " + m.name);
+			dropped++;
+		    }
+		}
+		LOGGER.debug("pushing metrics: done! dropped (null/NaN) metrics: " + dropped);
+
 	}
 }
