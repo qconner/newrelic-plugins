@@ -6,5 +6,5 @@ public class Defaults {
 	public static String JMXREMOTE_PLUGIN_NAME = "ar.com.3legs.newrelic.jmxremote";
 	public static String LINUX_VM_PLUGIN_NAME = "ar.com.3legs.newrelic.LinuxVM";
 	public static String LINUX_NETWORKING_PLUGIN_NAME = "ar.com.3legs.newrelic.LinuxNetworking";
-	public static String VERSION = "3.1.0";
+	public static String VERSION = "3.2.0";
 }
