@@ -20,7 +20,7 @@ non_master_build:
   script:
     - ant dist
     - md5sum dist/3.2.0/newrelic_3legs_plugin-3.2.0.tar.gz >/tmp/newrelic_3legs_plugin-3.2.0.tar.gz.md5
-    - "while read md5sum rest; curl --netrc -X PUT -H X-Checksum-Md5:${md5sum} https://spiceworks.jfrog.io/spiceworks/build-generic/newrelic-plugins/newrelic_3legs_plugin-3.2.0.tar.gz -T dist/3.2.0/newrelic_3legs_plugin-3.2.0.tar.gz; done </tmp/newrelic_3legs_plugin-3.2.0.tar.gz.md5"
+    - "while read md5sum rest; do curl --netrc -X PUT -H X-Checksum-Md5:${md5sum} https://spiceworks.jfrog.io/spiceworks/build-generic/newrelic-plugins/newrelic_3legs_plugin-3.2.0.tar.gz -T dist/3.2.0/newrelic_3legs_plugin-3.2.0.tar.gz; done </tmp/newrelic_3legs_plugin-3.2.0.tar.gz.md5"
   artifacts:
     name: "${CI_BUILD_NAME}_${CI_BUILD_REF_NAME}"
     expire_in: 2 week
